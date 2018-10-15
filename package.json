@@ -1,0 +1,17 @@
+{
+  "name": "bifrost",
+  "version": "1.0.0",
+  "description": "A HTTP Proxy",
+  "main": "index.js",
+  "scripts": {
+    "start" : "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "romain@homeloop.fr",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "http-proxy": "^1.17.0",
+    "json-format": "^1.0.1",
+    "mkdirp": "^0.5.1"
+  }
+}
