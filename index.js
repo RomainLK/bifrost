@@ -4,7 +4,7 @@ const fs = require('fs')
 const jsonFormat = require('json-format')
 const { URL } = require('url');
 const mkdirp = require('mkdirp')
-
+const zlib = require('zlib')
 
 const loggedHosts = ['localhost:3030']
 const ignoredMethods = ['OPTIONS']
@@ -28,10 +28,9 @@ let count = 0
 proxy.on('proxyRes', (proxyRes, req, res) => {
 
   const headers = req.headers
-  const method = proxyRes.req.method
+  const method = req.method
 
-  if (!loggedHosts.includes(headers.host) || ignoredMethods.includes(method)) {
-    console.log('Unlogged: ', method , ' - ' ,req.url)
+  if (!loggedHosts.includes(headers.host) || ignoredMethods.includes(method)) {    
     return
   }
   const url = new URL(req.url)
@@ -46,7 +45,7 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
   const reqFilePath = makeFilePath('REQ', 'txt')
   let content = req.url
   if(headers['content-type'] === 'application/json' && req.data){ 
-    content += jsonFormat(JSON.parse(req.data), jsonConfig)
+    content += '\n' + jsonFormat(JSON.parse(req.data), jsonConfig)
   }
 
   fs.writeFile(reqFilePath, content, err => {
@@ -56,12 +55,28 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
     console.log(id, ' Saved REQUEST:', reqFilePath)
   })  
 
+  let resBody = new Buffer('')
+  let dataCount = 0
+  proxyRes.on('data', data => {
+    dataCount++
+    resBody = Buffer.concat([resBody, data]);
+  })
 
-  proxyRes.on('data',  data => {
-    const text = data.toString('utf8')
+  proxyRes.on('end',  () => {
+    new Promise((resolve, reject) => {})
+    if(proxyRes.headers['content-encoding'] === 'gzip'){
+      resBody = zlib.unzipSync(resBody)
+    }
+    const text = resBody.toString('utf8')
     let content
-    if (proxyRes.headers['content-type'].includes('application/json')) {
+    if (proxyRes.headers['content-type'].includes('application/json') && text) {
+      try{
       content = jsonFormat(JSON.parse(text), jsonConfig)
+      } catch(e){
+        console.error('Failed to parse JSON ', method, ' ', req.url)
+        console.error(text)
+        content = text
+      }
     } else {
       content = text
     }
@@ -83,12 +98,23 @@ const server = http.createServer( (req, res) => {
   // You can define here your custom logic to handle the request
   // and then proxy the request.  
   const url = new URL(req.url)
+  if(req.method === 'HEAD'){
+    // Some weird request when booting Cypress' Chrome
+    // So we handle them here
+    res.end()
+    return
+  }
   req.on('data', data => {
     const text = data.toString('utf8')
     req.data = text
   })
+  let logged = 'LOGGED'
+  if (!loggedHosts.includes(req.headers.host) || ignoredMethods.includes(req.method)) {
+    logged = 'UNLOGGED'
+  }
 
-  console.log('Proxying ', req.url)
+
+  console.log(logged, ' - Proxying: ', req.method , ' - ' ,req.url)
   proxy.web(req, res, { target: url.origin })
 })
 
