@@ -11,7 +11,7 @@ const ignoredMethods = ['OPTIONS']
 
 
 
-const outputFolder = './output/' + new Date().toISOString().substr(0,19)
+const outputFolder = './output/' + new Date().toISOString().substr(0, 19)
 mkdirp(outputFolder, err => {
   if (err)
     throw err
@@ -30,7 +30,7 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
   const headers = req.headers
   const method = req.method
 
-  if (!loggedHosts.includes(headers.host) || ignoredMethods.includes(method)) {    
+  if (!loggedHosts.includes(headers.host) || ignoredMethods.includes(method)) {
     return
   }
   const url = new URL(req.url)
@@ -41,19 +41,19 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
   function makeFilePath(type, extension) {
     return `${outputFolder}/${(id + '').padStart(4, 0)}-${type}-${method}-${trimmedPath}.${extension}`
   }
-     
+
   const reqFilePath = makeFilePath('REQ', 'txt')
   let content = req.url
-  if(headers['content-type'] === 'application/json' && req.data){ 
+  if (headers['content-type'] === 'application/json' && req.data) {
     content += '\n' + jsonFormat(JSON.parse(req.data), jsonConfig)
   }
 
   fs.writeFile(reqFilePath, content, err => {
-    if (err){
+    if (err) {
       console.error(err)
     }
     console.log(id, ' Saved REQUEST:', reqFilePath)
-  })  
+  })
 
   let resBody = new Buffer('')
   let dataCount = 0
@@ -62,31 +62,41 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
     resBody = Buffer.concat([resBody, data]);
   })
 
-  proxyRes.on('end',  () => {
-    new Promise((resolve, reject) => {})
-    if(proxyRes.headers['content-encoding'] === 'gzip'){
-      resBody = zlib.unzipSync(resBody)
-    }
-    const text = resBody.toString('utf8')
-    let content
-    if (proxyRes.headers['content-type'].includes('application/json') && text) {
-      try{
-      content = jsonFormat(JSON.parse(text), jsonConfig)
-      } catch(e){
-        console.error('Failed to parse JSON ', method, ' ', req.url)
-        console.error(text)
+  proxyRes.on('end', () => {
+    new Promise((resolve, reject) => {
+      if (proxyRes.headers['content-encoding'] === 'gzip') {
+        zlib.unzip(resBody, (err, result) => {
+          if (err) {
+            reject(err)
+          }
+          resolve(result)
+        })
+      } else {
+        resolve(resBody)
+      }
+    }).then(body => {
+      const text = body.toString('utf8')
+      let content
+      if (proxyRes.headers['content-type'].includes('application/json') && text) {
+        try {
+          content = jsonFormat(JSON.parse(text), jsonConfig)
+        } catch (e) {
+          console.error('Failed to parse JSON ', method, ' ', req.url)
+          console.error(text)
+          content = text
+        }
+      } else {
         content = text
       }
-    } else {
-      content = text
-    }
-    const resFilePath = makeFilePath('RES', 'json')
-    fs.writeFile(resFilePath, content, err => {
-      if (err){
-        console.error(err)
-      }
-      console.log(id, ' Saved RESPONSE:', resFilePath)
+      const resFilePath = makeFilePath('RES', 'json')
+      fs.writeFile(resFilePath, content, err => {
+        if (err) {
+          console.error(err)
+        }
+        console.log(id, ' Saved RESPONSE:', resFilePath)
+      })
     })
+
   })
 })
 //
@@ -94,11 +104,11 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
 // a web request to the target passed in the options
 // also you can use `proxy.ws()` to proxy a websockets request
 //
-const server = http.createServer( (req, res) => {
+const server = http.createServer((req, res) => {
   // You can define here your custom logic to handle the request
   // and then proxy the request.  
   const url = new URL(req.url)
-  if(req.method === 'HEAD'){
+  if (req.method === 'HEAD') {
     // Some weird request when booting Cypress' Chrome
     // So we handle them here
     res.end()
@@ -108,17 +118,17 @@ const server = http.createServer( (req, res) => {
     const text = data.toString('utf8')
     req.data = text
   })
+  proxy.web(req, res, { target: url.origin })
+
   let logged = 'LOGGED'
   if (!loggedHosts.includes(req.headers.host) || ignoredMethods.includes(req.method)) {
     logged = 'UNLOGGED'
+    return
   }
-
-
-  console.log(logged, ' - Proxying: ', req.method , ' - ' ,req.url)
-  proxy.web(req, res, { target: url.origin })
+  console.log(logged, ' - Proxying: ', req.method, ' - ', req.url)
 })
 
-console.log("listening on port 5050")
+console.log('Listening on port 5050')
 server.listen(5050)
 
 /*
