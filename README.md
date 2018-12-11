@@ -1,5 +1,9 @@
 # Introduction
+This is just a tiny tool developed in a corner. No maintenance.
+
 Bifrost is a HTTP proxy which logs request and response to a server. This is useful for headless environment, or even every day's debugging.
+
+
 
 # Features
 
